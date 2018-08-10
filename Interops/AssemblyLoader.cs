@@ -17,7 +17,6 @@ namespace Interops
         private LinkedList<Assembly> assemblies = null;
         private bool Initialized = false;
         private byte[][] _assemblies = null;
-        public static bool FailedToLoad = false;
         
 
         public void Setup(byte[][] assemblies, params byte[][] instrumentedAssemblies)
@@ -50,8 +49,7 @@ namespace Interops
             if(alreadyLoaded != null) return alreadyLoaded;
 
             Debug.WriteLine("Loading "+resolveEventArgs.Name);
-
-            FailedToLoad = true;
+            
             //throw new MissingSatelliteAssemblyException("Could not find: " + resolveEventArgs.Name);
             return null;
         }

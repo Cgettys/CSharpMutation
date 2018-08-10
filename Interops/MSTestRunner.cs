@@ -112,10 +112,6 @@ namespace Interops
                         {
                             throw e.InnerException;
                         }
-                        else if (e is MissingSatelliteAssemblyException)
-                        {
-                            throw e;
-                        }
                         else
                         {
                             return false;
@@ -153,21 +149,6 @@ namespace Interops
                         Debug.WriteLine("Test " + testMethod.Name + " failed, reason: " + e.InnerException);
                     }
 
-                }
-                catch (MissingSatelliteAssemblyException e)
-                {
-                    // When dependency can't be resolved (ie I can't even find the DLL myself)
-                    // That's really bad, but not sure how to fix if I don't have it.
-                    Debug.WriteLine(e);
-                    passed = false;
-                }
-
-                if (AssemblyLoader.FailedToLoad)
-                {
-                    // For some reason the MissingSatelliteAssemblyException is not bubbling.
-                    // Skip the test.
-                    passed = false;
-                    AssemblyLoader.FailedToLoad = false;
                 }
 
                 Debug.WriteLine(testMethod.Name + " "+ (passed? "passed":"failed"));

@@ -33,19 +33,25 @@ namespace CSharpMutation
         private byte[] testAssembly;
         private byte[] interopsAssembly;
         private byte[][] dependencies;
+        private string outputPath;
         private string appConfigPath;
         private Dictionary<int, List<string>> testCaseCoverageByLineID;
 
         private OnMutant _onMutantKilled;
         private OnMutant _onMutantLived;
 
+        private object _locker = new object();
+
         public CoveredProject(Project myProject, Project testProject, OnMutant onMutantKilled, OnMutant onMutantLived)
         {
             this._onMutantKilled = onMutantKilled;
             this._onMutantLived = onMutantLived;
-            // var outputPath = Path.GetDirectoryName(testProject.OutputFilePath);
+            outputPath = Path.GetDirectoryName(testProject.FilePath);
+            appConfigPath = Path.Combine(outputPath, "App.config");
+            var interopsLocation = typeof(AssemblyLoader).Assembly.Location;
+            File.Copy(appConfigPath, interopsLocation + ".config", true);
+            //Directory.SetCurrentDirectory(outputPath);
             Directory.SetCurrentDirectory(Path.GetDirectoryName(testProject.FilePath));
-            appConfigPath = Path.Combine(Path.GetDirectoryName(testProject.FilePath), "App.config");
             testCompiler = GetLibraryCompilation(testProject);
             projectCompiler = GetLibraryCompilation(myProject);
 
@@ -53,7 +59,7 @@ namespace CSharpMutation
             dependencies = paths.Select(File.ReadAllBytes).ToArray();
 
 
-            interopsAssembly = new WebClient().DownloadData(typeof(MSTestRunner).Assembly.Location);
+            interopsAssembly = new WebClient().DownloadData(interopsLocation);
             var interopsMetadata = AssemblyMetadata.CreateFromImage(interopsAssembly);
 
             projectCompiler = FixProject(myProject.Documents, projectCompiler, interopsMetadata);
@@ -71,7 +77,8 @@ namespace CSharpMutation
         {
             AppDomain domain = AppDomain.CreateDomain("Instrumentation", null, new AppDomainSetup()
             {
-                ConfigurationFile = appConfigPath
+                ConfigurationFile = appConfigPath,
+                ApplicationBase = outputPath
             });
 
             AssemblyLoader handler = (AssemblyLoader)domain.CreateInstanceFromAndUnwrap(typeof(AssemblyLoader).Assembly.Location,
@@ -102,9 +109,10 @@ namespace CSharpMutation
 
         public MutationResult MutateAndTestProject()
         {
+            // FIXME: could trivally parallelize this, but concurrent tests are competing for access to files...
             return projectCompiler.SyntaxTrees
                 .AsParallel()
-                .WithDegreeOfParallelism(6)
+                .WithDegreeOfParallelism(8)
                 .Select(MutateDocumentAndTestProject)
                 .Aggregate(MutationResult.MergeResults);
         }
@@ -129,12 +137,24 @@ namespace CSharpMutation
                         var mutantCompiler = projectCompiler
                                 .ReplaceSyntaxTree(root.SyntaxTree, newRoot.SyntaxTree);
 
-                        var mutatedAssembly = CompileAssembly(mutantCompiler);
+                        byte[] mutatedAssembly = null;
+                        try
+                        {
+                            mutatedAssembly = CompileAssembly(mutantCompiler);
+                        }
+                        catch (Exception e)
+                        {
+                            // Compile errors are a really bad sign and are indicative of bugs in the mutation.
+                            // ALWAYS debug these.
+                            Debug.Print("Compile error trying to mutate "+original.ToString()+" to "+mutant.ToString()+" , reason: "+ e.ToString());
+                            return false;
+                        }
                         // build app domain
                         AppDomain mutantDomain = AppDomain.CreateDomain("Mutant " + appdomainid++, null,
                             new AppDomainSetup()
                             {
-                                ConfigurationFile = appConfigPath
+                                ConfigurationFile = appConfigPath,
+                                ApplicationBase = outputPath
                             });
                         AssemblyLoader handler =
                             (AssemblyLoader)
@@ -151,9 +171,18 @@ namespace CSharpMutation
                         mutantTest.SetupCoverage(CoverageData.GetInstance().LineLocatorIDs,
                             CoverageData.GetInstance().reverseLineLocatorIDs);
 
-
-                        bool allPassed = mutantTest.RunTests(testAssembly,
-                            testCaseCoverageByLineID[mutantInfo.lineID]);
+                        bool allPassed = true;
+                        // Ensure only one thread runs tests at a time.
+                        lock (_locker)
+                        {
+                            // Now you might ask, "why would you lock on running unit tests?? Isn't that the slowest part??"
+                            // I agree in theory, but realize not everyone writes UNIT tests.
+                            // Many people write tests that write to files etc that are poor fits for mutation.
+                            // That's life.
+                            // This lock at least lets the mutation, compilation, and assembly loading happen concurrently.
+                            allPassed = mutantTest.RunTests(testAssembly,
+                                testCaseCoverageByLineID[mutantInfo.lineID]);
+                        }
                         // TODO: need to be collecting tons of data about tests or RIP
                         ExportedMutantInfo exportedInfo = new ExportedMutantInfo(mutantInfo);
                         if (allPassed)
@@ -249,7 +278,7 @@ namespace CSharpMutation
         {
             byte[] instrumentedAssembly;
             MemoryStream stream = new MemoryStream();
-            
+
             EmitResult result = compiler.Emit(stream);
 
             if (IsMarginalSuccess(result))

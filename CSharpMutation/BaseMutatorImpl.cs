@@ -115,7 +115,7 @@ namespace CSharpMutation
             if (node is LocalDeclarationStatementSyntax)
             {
                 // one set of mutants per variable defined on this line
-                foreach (var variableMutantStreams in ((LocalDeclarationStatementSyntax) node).Declaration.Variables.Select(v => v.Initializer.Value).Select(expr => GenerateExpressionMutants(expr, lineID)))
+                foreach (var variableMutantStreams in ((LocalDeclarationStatementSyntax) node).Declaration.Variables.Where(v => v.Initializer != null).Select(v => v.Initializer.Value).Select(expr => GenerateExpressionMutants(expr, lineID)))
                 {
                     foreach (var mutantInfo in variableMutantStreams)
                     {
