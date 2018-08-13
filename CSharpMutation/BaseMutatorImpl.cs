@@ -10,10 +10,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CSharpMutation
 {
-    public class BaseMutatorImpl
+    public class BaseMutatorImpl : CSharpSyntaxVisitor<IEnumerable<MutantInfo>>, MutantEnumerator
     {
         private CSharpCompilation _compiler;
         private Dictionary<SyntaxKind, IEnumerable<SyntaxKind>> _kindsToMutate;
+        private int lineID;
 
         public BaseMutatorImpl(CSharpCompilation compiler)
         {
@@ -45,88 +46,48 @@ namespace CSharpMutation
         }
 
         // FIXME: break this huge chain up into separate Decorators
-        internal IEnumerable<MutantInfo> GetMutants(SyntaxNode node, int lineID)
+        public IEnumerable<MutantInfo> GetMutants(SyntaxNode node, int lineID)
         {
-            var _semanticModel = _compiler.GetSemanticModel(node.SyntaxTree);
+            this.lineID = lineID;
+            var result = Visit(node);
+            foreach (var mutantInfo in result)
+            {
+                yield return mutantInfo;
+            }
+        }
+
+        public override IEnumerable<MutantInfo> Visit(SyntaxNode node)
+        {
 
             // delete first - no point in mutating if statement is ignored!
             if (node is StatementSyntax)
             {
-                // Note: Roslyn does not seem to like empty block statements.
-                StatementSyntax nop = SyntaxFactory.ParseStatement(";");
-                DataFlowAnalysis dataFlow = _semanticModel.AnalyzeDataFlow(node);
-                ControlFlowAnalysis controlFlow = _semanticModel.AnalyzeControlFlow(node);
-                // statements with only side effects and no returns or exceptions trivially can be erased
-                if (!controlFlow.ExitPoints.Any() && controlFlow.EndPointIsReachable)
-                {
-                    if (!dataFlow.VariablesDeclared.Any() || node is BlockSyntax)// || !dataFlow.ReadOutside.Any())
-                    {
-                        yield return new MutantInfo(lineID, node, nop, "Deleted statement executed by test");
-                    }
-
-                }
-
-                if (node is ForStatementSyntax && controlFlow.EndPointIsReachable)
-                {
-                    yield return new MutantInfo(lineID, node, nop, "Deleted entire for loop");
-                }
+                foreach (var mutantInfo1 in DeleteStatement(node)) yield return mutantInfo1;
             }
-            if ((node as ReturnStatementSyntax)?.Expression != null)
+            
+            // if statements are instrumented in the condition itself, not before the if
+            if (node is ExpressionSyntax && node.Parent is IfStatementSyntax)
             {
-                foreach (var mutantInfo in GenerateExpressionMutants(((ReturnStatementSyntax)node).Expression, lineID))
+                foreach (var mutantInfo1 in DeleteStatement(node.Parent)) yield return mutantInfo1;
+                // should always be boolean
+                ExpressionSyntax newCondition = SyntaxFactory.ParseExpression("true");
+                yield return new MutantInfo(lineID, node, newCondition, "Replaced if condition with true");
+
+                newCondition = SyntaxFactory.ParseExpression("false");
+                yield return new MutantInfo(lineID, node, newCondition, "Replaced if condition with false");
+
+
+                // mutate if condition itself
+                foreach (var mutantInfo in GenerateExpressionMutants((ExpressionSyntax)node, lineID))
                 {
                     yield return mutantInfo;
                 }
             }
-            if (node is ExpressionSyntax) // NOTE: likely a covered expression in an if statement
+            IEnumerable<MutantInfo> baseResult = base.Visit(node);
+
+            if (baseResult != null)
             {
-                if (node.Parent is IfStatementSyntax)
-                {
-                    // should always be boolean
-                    ExpressionSyntax newCondition = SyntaxFactory.ParseExpression("true");
-                    yield return new MutantInfo(lineID, node, newCondition, "Replaced if condition with true");
-
-                    newCondition = SyntaxFactory.ParseExpression("false");
-                    yield return new MutantInfo(lineID, node, newCondition, "Replaced if condition with false");
-
-
-                    // mutate if condition itself
-                    foreach (var mutantInfo in GenerateExpressionMutants((ExpressionSyntax)node, lineID))
-                    {
-                        yield return mutantInfo;
-                    }
-                }
-
-                //else if (node is IdentifierNameSyntax)
-                //{
-                //    IdentifierNameSyntax identifier = (IdentifierNameSyntax) node;
-                //    SemanticModel _model = _compiler.GetSemanticModel(node.SyntaxTree);
-                //    var symbolInfo = _model.GetSymbolInfo(identifier);
-                //    if (symbolInfo.Symbol is ILocalSymbol)
-                //    {
-                //        if (((ILocalSymbol) symbolInfo.Symbol).Type.IsReferenceType)
-                //        {
-                //            yield return SyntaxFactory.ParseExpression("null");
-                //        }
-                //    }
-                //}
-            }
-
-            if (node is LocalDeclarationStatementSyntax)
-            {
-                // one set of mutants per variable defined on this line
-                foreach (var variableMutantStreams in ((LocalDeclarationStatementSyntax) node).Declaration.Variables.Where(v => v.Initializer != null).Select(v => v.Initializer.Value).Select(expr => GenerateExpressionMutants(expr, lineID)))
-                {
-                    foreach (var mutantInfo in variableMutantStreams)
-                    {
-                        yield return mutantInfo;
-                    }
-                }
-            }
-
-            if (node is ExpressionStatementSyntax)
-            {
-                foreach (var mutantInfo in GenerateExpressionMutants(((ExpressionStatementSyntax)node).Expression, lineID))
+                foreach (var mutantInfo in baseResult)
                 {
                     yield return mutantInfo;
                 }
@@ -134,11 +95,60 @@ namespace CSharpMutation
 
         }
 
-        private IEnumerable<MutantInfo> GenerateExpressionMutants(ExpressionSyntax expressionSyntax, int lineID)
+        private IEnumerable<MutantInfo> DeleteStatement(SyntaxNode node)
+        {
+
+            var _semanticModel = _compiler.GetSemanticModel(node.SyntaxTree);
+            // Note: Roslyn does not seem to like empty block statements.
+            StatementSyntax nop = SyntaxFactory.ParseStatement(";");
+            DataFlowAnalysis dataFlow = _semanticModel.AnalyzeDataFlow(node);
+            ControlFlowAnalysis controlFlow = _semanticModel.AnalyzeControlFlow(node);
+            // statements with only side effects and no returns or exceptions trivially can be erased
+            if (!controlFlow.ExitPoints.Any() && controlFlow.EndPointIsReachable)
+            {
+                if (!dataFlow.VariablesDeclared.Any() || node is BlockSyntax) // || !dataFlow.ReadOutside.Any())
+                {
+                    yield return new MutantInfo(lineID, node, nop, "Deleted statement executed by test");
+                }
+            }
+
+            if (node is ForStatementSyntax && controlFlow.EndPointIsReachable)
+            {
+                yield return new MutantInfo(lineID, node, nop, "Deleted entire for loop");
+            }
+        }
+
+        public override IEnumerable<MutantInfo> VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
+        {
+            foreach (var variableMutantStreams in node.Declaration.Variables.Where(v => v.Initializer != null).Select(v => v.Initializer.Value).Select(expr => GenerateExpressionMutants(expr, lineID)))
+            {
+                foreach (var mutantInfo in variableMutantStreams)
+                {
+                    yield return mutantInfo;
+                }
+            }
+        }
+
+        public override IEnumerable<MutantInfo> VisitReturnStatement(ReturnStatementSyntax node)
+        {
+            if (node.Expression != null)
+            {
+                return GenerateExpressionMutants(node.Expression, lineID);
+            }
+            return new List<MutantInfo>();
+        }
+
+        public override IEnumerable<MutantInfo> VisitExpressionStatement(ExpressionStatementSyntax node)
+        {
+            return GenerateExpressionMutants(node.Expression, lineID);
+        }
+
+        public override IEnumerable<MutantInfo> VisitBinaryExpression(BinaryExpressionSyntax expressionSyntax)
         {
             var _semanticModel = _compiler.GetSemanticModel(expressionSyntax.SyntaxTree);
             ITypeSymbol type = _semanticModel.GetTypeInfo(expressionSyntax).ConvertedType;
-            if (expressionSyntax is BinaryExpressionSyntax && IsMathy(type))
+
+            if (IsMathy(type))
             {
                 BinaryExpressionSyntax binaryNode = (BinaryExpressionSyntax)expressionSyntax;
                 // have to be more careful here - is it a comparison operator, logical operator, or something else?
@@ -154,19 +164,40 @@ namespace CSharpMutation
                     Console.WriteLine("Unknown binary operator: " + binaryNode.Kind());
                 }
             }
-            
-            // FIXME: these will NEVER execute because they are not instrumented!
-            if (expressionSyntax is ConditionalExpressionSyntax)
-            {
-                ConditionalExpressionSyntax ternary = (ConditionalExpressionSyntax)expressionSyntax;
-                yield return
-                    new MutantInfo(lineID, expressionSyntax, ternary.WhenTrue,
-                        "Replaced tenary operator with true condition");
+        }
 
-                yield return
-                    new MutantInfo(lineID, expressionSyntax, ternary.WhenFalse,
-                        "Replaced tenary operator with false condition");
-            }
+        public override IEnumerable<MutantInfo> VisitConditionalExpression(ConditionalExpressionSyntax ternary)
+        {
+            yield return
+                new MutantInfo(lineID, ternary, ternary.WhenTrue,
+                    "Replaced tenary operator with true condition");
+
+            yield return
+                new MutantInfo(lineID, ternary, ternary.WhenFalse,
+                    "Replaced tenary operator with false condition");
+        }
+
+        public override IEnumerable<MutantInfo> VisitAssignmentExpression(AssignmentExpressionSyntax expressionSyntax)
+        {
+            // only mutate right side
+            return GenerateExpressionMutants(expressionSyntax.Right, lineID);
+        }
+
+        public override IEnumerable<MutantInfo> VisitMemberAccessExpression(MemberAccessExpressionSyntax expressionSyntax)
+        {
+            return ConvertToConstant(expressionSyntax);
+        }
+
+        public override IEnumerable<MutantInfo> VisitLiteralExpression(LiteralExpressionSyntax expressionSyntax)
+        {
+            return ConvertToConstant(expressionSyntax);
+        }
+
+        private IEnumerable<MutantInfo> ConvertToConstant(ExpressionSyntax expressionSyntax)
+        {
+            var _semanticModel = _compiler.GetSemanticModel(expressionSyntax.SyntaxTree);
+            ITypeSymbol type = _semanticModel.GetTypeInfo(expressionSyntax).ConvertedType;
+
             if (expressionSyntax.Kind() == SyntaxKind.StringLiteralExpression && expressionSyntax.ToString() != "\"\""
                 || expressionSyntax is MemberAccessExpressionSyntax && type != null && type.SpecialType == SpecialType.System_String)
             {
@@ -178,6 +209,8 @@ namespace CSharpMutation
             if (expressionSyntax.Kind() == SyntaxKind.NumericLiteralExpression
                 || expressionSyntax is MemberAccessExpressionSyntax && IsNumeric(type))
             {
+                // FIXME: append appropriate base to constants, ie 0m, 0d, 0f, ...
+                // .NET is very sensitive to this issue.
                 if (expressionSyntax.ToString() == "0")
                 {
                     yield return
@@ -193,20 +226,22 @@ namespace CSharpMutation
                                 .WithToken(SyntaxFactory.Literal("0", 0)),
                             "Replaced " + expressionSyntax.ToString() + " with 0");
                 }
-                
-            }
 
-            // manually descend tree because they will not have coverage
-            // might not be true of lambda expressions though
-            if (expressionSyntax is AssignmentExpressionSyntax)
+            }
+        }
+
+        private IEnumerable<MutantInfo> GenerateExpressionMutants(ExpressionSyntax expressionSyntax, int lineID)
+        {
+            var baseResult = base.Visit(expressionSyntax);
+            if (baseResult != null)
             {
-                // only mutate right side
-                foreach (var generateExpressionMutant in GenerateExpressionMutants(((AssignmentExpressionSyntax)expressionSyntax).Right, lineID))
+                foreach (var mutantInfo in baseResult)
                 {
-                    yield return generateExpressionMutant;
+                    yield return mutantInfo;
                 }
             }
-            else if (! (expressionSyntax is LambdaExpressionSyntax))
+
+            if (!(expressionSyntax is AssignmentExpressionSyntax) && !(expressionSyntax is LambdaExpressionSyntax))
             {
                 foreach (var syntax in expressionSyntax.ChildNodes().OfType<ExpressionSyntax>())
                 {

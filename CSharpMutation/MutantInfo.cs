@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis;
 
 namespace CSharpMutation
 {
-    internal class MutantInfo
+    public class MutantInfo
     {
         public int lineID;
         public SyntaxNode original;

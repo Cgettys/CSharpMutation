@@ -114,6 +114,8 @@
   <ItemGroup>
     <Compile Include="CoveredProject.cs" />
     <Compile Include="ExportedMutantInfo.cs" />
+    <Compile Include="MutantChain.cs" />
+    <Compile Include="MutantEnumerator.cs" />
     <Compile Include="SyntaxFixer.cs" />
     <Compile Include="MutantInfo.cs" />
     <Compile Include="MutatingWalker.cs" />

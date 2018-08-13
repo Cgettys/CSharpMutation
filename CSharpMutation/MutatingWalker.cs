@@ -15,12 +15,12 @@ namespace CSharpMutation
     {
         public delegate Boolean OnMutant(MutantInfo info);
 
-        private BaseMutatorImpl _mutator;
+        private MutantEnumerator _mutator;
         private OnMutant _onMutant;
         private CoverageData _coverage;
         private readonly Dictionary<int, List<String>> _testCaseCoverageByLineID;
         
-        public MutatingWalker(BaseMutatorImpl mutator, OnMutant callback, CoverageData coverage, Dictionary<int, List<String>> testCaseCoverageByLineID)
+        public MutatingWalker(MutantEnumerator mutator, OnMutant callback, CoverageData coverage, Dictionary<int, List<String>> testCaseCoverageByLineID)
         {
             _mutator = mutator;
             _onMutant = callback;
