@@ -49,9 +49,19 @@ namespace CSharpMutation
             outputPath = Path.GetDirectoryName(testProject.FilePath);
             appConfigPath = Path.Combine(outputPath, "App.config");
             var interopsLocation = typeof(AssemblyLoader).Assembly.Location;
-            File.Copy(appConfigPath, interopsLocation + ".config", true);
+            try
+            {
+                File.Copy(appConfigPath, interopsLocation + ".config", true);
+            }
+            catch (FileNotFoundException e)
+            {
+                // no config file; fine
+                Debug.Print(e.ToString());
+            }
             //Directory.SetCurrentDirectory(outputPath);
             Directory.SetCurrentDirectory(Path.GetDirectoryName(testProject.FilePath));
+
+
             testCompiler = GetLibraryCompilation(testProject);
             projectCompiler = GetLibraryCompilation(myProject);
 
