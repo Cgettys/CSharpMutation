@@ -148,33 +148,46 @@ namespace CSharpMutation_VSIX
                     object icon = (short) Microsoft.VisualStudio.Shell.Interop.Constants.SBAI_Build;
                     statusBar.SetText("Instrumenting code for mutation...");
                     statusBar.Animation(1, ref icon);
+                    try
+                    {
+                        CoveredProject coveredProject = new CoveredProject(project, testProject,
+                            (m) =>
+                            {
+                                UpdateProgress(m, statusBar, ++killCount);
+                                //ListMutantInErrorWindow(m, true);
+                            },
+                            (m) =>
+                            {
+                                UpdateProgress(m, statusBar, killCount);
+                                ListMutantInErrorWindow(m, false);
+                            });
+                        Result = coveredProject.MutateAndTestProject();
+                        //Result.LiveMutants.ForEach(ListMutantInErrorWindow);
+                        Result.KilledMutants.ForEach((m) => ListMutantInErrorWindow(m, true));
 
-                    CoveredProject coveredProject = new CoveredProject(project, testProject,
-                        (m) =>
-                        {
-                            UpdateProgress(m, statusBar, ++killCount);
-                            //ListMutantInErrorWindow(m, true);
-                        },
-                        (m) =>
-                        {
-                            UpdateProgress(m, statusBar, killCount);
-                            ListMutantInErrorWindow(m, false);
-                        });
-                    Result = coveredProject.MutateAndTestProject();
-                    //Result.LiveMutants.ForEach(ListMutantInErrorWindow);
-                    Result.KilledMutants.ForEach((m) => ListMutantInErrorWindow(m, true));
-                    
-                    statusBar.Animation(0, ref icon);
-                    statusBar.SetText("Mutation complete (" + killCount + " mutants killed)");
-                    menuItem.Enabled = true;
-                    errorProvider.Tasks.Remove(infoTask);
+                        statusBar.Animation(0, ref icon);
+                        statusBar.SetText("Mutation complete (" + killCount + " mutants killed)");
+                        menuItem.Enabled = true;
+                        errorProvider.Tasks.Remove(infoTask);
 
-                    VsShellUtilities.ShowMessageBox(this.ServiceProvider,
-                        "Mutation complete. " + Result.LiveMutants.Count + " mutants lived. " +
-                        Result.KilledMutants.Count +
-                        " mutants successfully killed. See Error List pane for descriptions of live mutants.",
-                        "Mutation testing", OLEMSGICON.OLEMSGICON_INFO, OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                        OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+                        VsShellUtilities.ShowMessageBox(this.ServiceProvider,
+                            "Mutation complete. " + Result.LiveMutants.Count + " mutants lived. " +
+                            Result.KilledMutants.Count +
+                            " mutants successfully killed. See Error List pane for descriptions of live mutants.",
+                            "Mutation testing", OLEMSGICON.OLEMSGICON_INFO, OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                            OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+                    }
+                    catch (Exception e2)
+                    {
+                        Task newError = new Task
+                        {
+                            Category = TaskCategory.User,
+                            Text = "Fatal error during mutation: "+e2.ToString(),
+                            CanDelete = true,
+                            Priority = TaskPriority.High
+                        };
+                        errorProvider.Tasks.Add(newError);
+                    }
                 }).Start();
             }
             dialog.Dispose();
@@ -197,74 +210,75 @@ namespace CSharpMutation_VSIX
 
         private void ListMutantInErrorWindow(ExportedMutantInfo mutantInfo, bool killed)
         {
+            
+            Task newError = new Task
+            {
+                Category = TaskCategory.User,
+                Text =
+                    (killed ? "KILLED: " : "") + "Replaced " + mutantInfo.original.ToString() + " with " +
+                    mutantInfo.mutant.ToString(),
+                CanDelete = true,
+                Document = mutantInfo.fileName,
+                Line = mutantInfo.lineNumber,
+                Column = mutantInfo.column,
+                Priority = killed ? TaskPriority.Low : TaskPriority.Normal
+            };
+            // FIXME: use DocumentTask, which has built-in navigation.
+            newError.Navigate += (object sender2, EventArgs e2) =>
+            {
+                // https://www.mztools.com/articles/2015/MZ2015002.aspx
+                //Guid guid_source_code_text_editor_with_encoding = new Guid("{C7747503-0E24-4FBE-BE4B-94180C3947D7}");
+                //var ds = myWorkspace.GetOpenDocumentIds();
+                //IVsUIHierarchy hierarchy = null;
+                //uint itemID = 0;
+                //IVsWindowFrame frame = null;
+                //if (VsShellUtilities.IsDocumentOpen(this.ServiceProvider, mutantInfo.fileName,
+                //    guid_source_code_text_editor_with_encoding, out hierarchy, out itemID, out frame))
+                //{
+                //}
+                //else
+                //{
+                //    frame = VsShellUtilities.OpenDocumentWithSpecificEditor(this.ServiceProvider, mutantInfo.fileName,
+                //        guid_source_code_text_editor_with_encoding,
+                //        Microsoft.VisualStudio.VSConstants.LOGVIEWID.Code_guid);
+                //}
+
+                //frame.Show();
+
+                // https://social.msdn.microsoft.com/Forums/vstudio/en-US/6dc1a84c-3821-4e7f-aca8-d3b20929a34d/programmatically-open-a-file-item-and-place-the-cursor-at-a-row-and-column?forum=vsx
+                DTE dte = (DTE) ServiceProvider.GetService(typeof(DTE));
+                ProjectItem projItem = null;
+                try
+                {
+                    projItem = dte.Solution.FindProjectItem(mutantInfo.fileName);
+                }
+                catch
+                {
+                }
+                if (projItem != null)
+                {
+                    bool wasOpen = projItem.get_IsOpen(EnvDTE.Constants.vsViewKindCode);
+                    Window win = null;
+                    if (!wasOpen)
+                    {
+                        win = projItem.Open(EnvDTE.Constants.vsViewKindCode);
+                        win.Visible = true;
+                        win.SetFocus();
+                    }
+                    else
+                    {
+                        projItem.Document.Activate();
+                    }
+                    // FIXME: most lines are off-by-one, but not all.
+                    // This is due to the code rewriting that adds curly braces.
+                    ((TextSelection) projItem.Document.Selection).GotoLine(mutantInfo.lineNumber, true);
+                    // Hacky solution: look forward from its approximate location for it.
+                    ((TextSelection) projItem.Document.Selection).FindText(mutantInfo.original.ToString());
+
+                }
+            };
             lock (errorProvider)
             {
-                Task newError = new Task
-                {
-                    Category = TaskCategory.User,
-                    Text =
-                        (killed ? "KILLED: " : "") + "Replaced " + mutantInfo.original.ToString() + " with " +
-                        mutantInfo.mutant.ToString(),
-                    CanDelete = true,
-                    Document = mutantInfo.fileName,
-                    Line = mutantInfo.lineNumber,
-                    Column = mutantInfo.column,
-                    Priority = killed ? TaskPriority.Low : TaskPriority.Normal
-                };
-                // FIXME: use DocumentTask, which has built-in navigation.
-                newError.Navigate += (object sender2, EventArgs e2) =>
-                {
-                    // https://www.mztools.com/articles/2015/MZ2015002.aspx
-                    //Guid guid_source_code_text_editor_with_encoding = new Guid("{C7747503-0E24-4FBE-BE4B-94180C3947D7}");
-                    //var ds = myWorkspace.GetOpenDocumentIds();
-                    //IVsUIHierarchy hierarchy = null;
-                    //uint itemID = 0;
-                    //IVsWindowFrame frame = null;
-                    //if (VsShellUtilities.IsDocumentOpen(this.ServiceProvider, mutantInfo.fileName,
-                    //    guid_source_code_text_editor_with_encoding, out hierarchy, out itemID, out frame))
-                    //{
-                    //}
-                    //else
-                    //{
-                    //    frame = VsShellUtilities.OpenDocumentWithSpecificEditor(this.ServiceProvider, mutantInfo.fileName,
-                    //        guid_source_code_text_editor_with_encoding,
-                    //        Microsoft.VisualStudio.VSConstants.LOGVIEWID.Code_guid);
-                    //}
-
-                    //frame.Show();
-
-                    // https://social.msdn.microsoft.com/Forums/vstudio/en-US/6dc1a84c-3821-4e7f-aca8-d3b20929a34d/programmatically-open-a-file-item-and-place-the-cursor-at-a-row-and-column?forum=vsx
-                    DTE dte = (DTE) ServiceProvider.GetService(typeof(DTE));
-                    ProjectItem projItem = null;
-                    try
-                    {
-                        projItem = dte.Solution.FindProjectItem(mutantInfo.fileName);
-                    }
-                    catch
-                    {
-                    }
-                    if (projItem != null)
-                    {
-                        bool wasOpen = projItem.get_IsOpen(EnvDTE.Constants.vsViewKindCode);
-                        Window win = null;
-                        if (!wasOpen)
-                        {
-                            win = projItem.Open(EnvDTE.Constants.vsViewKindCode);
-                            win.Visible = true;
-                            win.SetFocus();
-                        }
-                        else
-                        {
-                            projItem.Document.Activate();
-                        }
-                        // FIXME: most lines are off-by-one, but not all.
-                        // This is due to the code rewriting that adds curly braces.
-                        ((TextSelection) projItem.Document.Selection).GotoLine(mutantInfo.lineNumber, true);
-                        // Hacky solution: look forward from its approximate location for it.
-                        ((TextSelection) projItem.Document.Selection).FindText(mutantInfo.original.ToString());
-
-                    }
-                };
                 errorProvider.Tasks.Add(newError);
             }
         }

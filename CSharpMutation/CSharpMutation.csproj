@@ -119,7 +119,6 @@
     <Compile Include="MutatingWalker.cs" />
     <Compile Include="BaseMutatorImpl.cs" />
     <Compile Include="MutationResult.cs" />
-    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="CodeCoverageInstrumenter.cs" />
   </ItemGroup>
