@@ -1,8 +1,9 @@
 # CSharpMutation
 
-Mark Hays, Direct Supply, Rose-Hulman
+Mark Hays
+Direct Supply/Rose-Hulman Institute of Technology
 
-Mutation testing plugin for Visual Studio Enterprise 2015.
+Mutation testing plugin C#, originally built for Visual Studio Enterprise 2015.
 
 Also tested Community and Enterprise flavors of 2017; seems to work.
 
