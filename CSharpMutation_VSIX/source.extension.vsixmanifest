@@ -2,8 +2,8 @@
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Id="CSharpMutation_VSIX.RoseHulman.887033e1-60a2-4607-b8ed-65e96c31ce4e" Version="1.0" Language="en-US" Publisher="Mark Hays" />
-    <DisplayName>CSharpMutation_VSIX</DisplayName>
-    <Description>Empty VSIX Project.</Description>
+    <DisplayName>CSharpMutation</DisplayName>
+    <Description xml:space="preserve">Mutation tool for C#.</Description>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[14.0,)" />

@@ -175,24 +175,30 @@ namespace CSharpMutation
                         // Ensure only one thread runs tests at a time.
                         lock (_locker)
                         {
-                            // Now you might ask, "why would you lock on running unit tests?? Isn't that the slowest part??"
-                            // I agree in theory, but realize not everyone writes UNIT tests.
-                            // Many people write tests that write to files etc that are poor fits for mutation.
-                            // That's life.
-                            // This lock at least lets the mutation, compilation, and assembly loading happen concurrently.
-                            allPassed = mutantTest.RunTests(testAssembly,
-                                testCaseCoverageByLineID[mutantInfo.lineID]);
+                            try
+                            {
+
+                                // TODO: create a fixed number of worker threads and give each thread its own directory.
+                                // Lock is needed because certain tests are writing files and are writing to the same locations.
+                                allPassed = mutantTest.RunTests(testAssembly,
+                                    testCaseCoverageByLineID[mutantInfo.lineID]);
+                            }
+                            catch (Exception e)
+                            {
+                                Debug.Print(e.ToString());
+                                return true; // keep going to next mutation
+                            }
                         }
                         // TODO: need to be collecting tons of data about tests or RIP
                         ExportedMutantInfo exportedInfo = new ExportedMutantInfo(mutantInfo);
                         if (allPassed)
                         {
-                            _onMutantLived(exportedInfo);
+                            Task.Run(() => _onMutantLived(exportedInfo));
                             liveMutants.Add(exportedInfo);
                         }
                         else
                         {
-                            _onMutantKilled(exportedInfo);
+                            Task.Run(() => _onMutantKilled(exportedInfo));
                             killedMutants.Add(exportedInfo);
                         }
                         AppDomain.Unload(mutantDomain);

@@ -56,7 +56,7 @@
         <Parent guid="guidMutationTestingPackageCmdSet" id="MyMenuGroup" />
         <Icon guid="guidImages" id="bmpPic1" />
         <Strings>
-          <ButtonText>Invoke MutationTesting</ButtonText>
+          <ButtonText>Invoke CSharpMutation</ButtonText>
         </Strings>
       </Button>
     </Buttons>
