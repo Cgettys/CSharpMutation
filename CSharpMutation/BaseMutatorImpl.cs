@@ -68,7 +68,6 @@ namespace CSharpMutation
             // if statements are instrumented in the condition itself, not before the if
             if (node is ExpressionSyntax && node.Parent is IfStatementSyntax)
             {
-                foreach (var mutantInfo1 in DeleteStatement(node.Parent)) yield return mutantInfo1;
                 // should always be boolean
                 ExpressionSyntax newCondition = SyntaxFactory.ParseExpression("true");
                 yield return new MutantInfo(lineID, node, newCondition, "Replaced if condition with true");
