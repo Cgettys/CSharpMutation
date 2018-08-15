@@ -6,7 +6,7 @@ Direct Supply/Rose-Hulman Institute of Technology
 
 A fast mutation testing plugin for C#, originally built for Visual Studio Enterprise 2015. It features many of the code coverage optimizations first introduced by pitest for Java. 
 
-Also tested Community and Enterprise flavors of 2017; seems to work.
+Also tested Community and Pro flavors of 2017; seems to work.
 
 ## Installation
 
