@@ -198,7 +198,7 @@ namespace CSharpMutation
             ITypeSymbol type = _semanticModel.GetTypeInfo(expressionSyntax).ConvertedType;
 
             if (expressionSyntax.Kind() == SyntaxKind.StringLiteralExpression && expressionSyntax.ToString() != "\"\""
-                || expressionSyntax is MemberAccessExpressionSyntax && type != null && type.SpecialType == SpecialType.System_String)
+                || expressionSyntax is MemberAccessExpressionSyntax && type != null && type.SpecialType == SpecialType.System_String && expressionSyntax.ToString() != "string.Empty")
             {
                 yield return
                     new MutantInfo(lineID, expressionSyntax,
