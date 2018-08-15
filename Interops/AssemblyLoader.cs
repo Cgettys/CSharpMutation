@@ -32,6 +32,9 @@ namespace Interops
         {
             if (!Initialized)
             {
+                // BEWARE: even though we are loading assemblies as bytes,
+                // the assemblies may have further dependencies that will re-invoke this method!
+                Initialized = true;
                 foreach (byte[] assemblyBytes in instrumentedAssemblies)
                 {
                     AppDomain.CurrentDomain.Load(assemblyBytes);
@@ -40,7 +43,6 @@ namespace Interops
                 {
                     AppDomain.CurrentDomain.Load(assemblyBytes);
                 }
-                Initialized = true;
             }
 
             Assembly alreadyLoaded = AppDomain.CurrentDomain.GetAssemblies()
