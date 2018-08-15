@@ -167,8 +167,6 @@ namespace CSharpMutation_VSIX
 
                         statusBar.Animation(0, ref icon);
                         statusBar.SetText("Mutation complete (" + killCount + " mutants killed)");
-                        menuItem.Enabled = true;
-                        errorProvider.Tasks.Remove(infoTask);
 
                         VsShellUtilities.ShowMessageBox(this.ServiceProvider,
                             "Mutation complete. " + Result.LiveMutants.Count + " mutants lived. " +
@@ -182,11 +180,16 @@ namespace CSharpMutation_VSIX
                         Task newError = new Task
                         {
                             Category = TaskCategory.User,
-                            Text = "Fatal error during mutation: "+e2.ToString(),
+                            Text = "Fatal error during mutation: " + e2.ToString(),
                             CanDelete = true,
                             Priority = TaskPriority.High
                         };
                         errorProvider.Tasks.Add(newError);
+                    }
+                    finally
+                    {
+                        menuItem.Enabled = true;
+                        errorProvider.Tasks.Remove(infoTask);
                     }
                 }).Start();
             }
