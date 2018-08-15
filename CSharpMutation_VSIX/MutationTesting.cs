@@ -20,6 +20,7 @@ using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.ComponentModelHost;
+using Microsoft.VisualStudio.Threading;
 using Project = Microsoft.CodeAnalysis.Project;
 
 namespace CSharpMutation_VSIX
@@ -139,11 +140,13 @@ namespace CSharpMutation_VSIX
                 errorProvider.Show();
                 Project project = dialog.SelectedProject;
                 Project testProject = dialog.SelectedTestProject;
+                JoinableTaskFactory uiThread = new JoinableTaskFactory(new JoinableTaskContext());
+                IVsStatusbar statusBar = (IVsStatusbar)ServiceProvider.GetService(typeof(SVsStatusbar));
+
                 new System.Threading.Thread(() =>
                 {
                     int killCount = 0;
                     menuItem.Enabled = false;
-                    IVsStatusbar statusBar = (IVsStatusbar) ServiceProvider.GetService(typeof(SVsStatusbar));
                     
                     object icon = (short) Microsoft.VisualStudio.Shell.Interop.Constants.SBAI_Build;
                     statusBar.SetText("Instrumenting code for mutation...");
@@ -153,20 +156,25 @@ namespace CSharpMutation_VSIX
                         CoveredProject coveredProject = new CoveredProject(project, testProject,
                             (m) =>
                             {
-                                UpdateProgress(m, statusBar, ++killCount);
+                                ++killCount;
+                                uiThread.Run(async () => UpdateProgress(m, statusBar, killCount));
                                 //ListMutantInErrorWindow(m, true);
                             },
                             (m) =>
                             {
-                                UpdateProgress(m, statusBar, killCount);
-                                ListMutantInErrorWindow(m, false);
+                                uiThread.Run(async () =>
+                                {
+                                    UpdateProgress(m, statusBar, killCount);
+                                    ListMutantInErrorWindow(m, false);
+                                });
+                                
                             });
                         Result = coveredProject.MutateAndTestProject();
                         //Result.LiveMutants.ForEach(ListMutantInErrorWindow);
-                        Result.KilledMutants.ForEach((m) => ListMutantInErrorWindow(m, true));
+                        Result.KilledMutants.ForEach((m) => uiThread.Run(async() => ListMutantInErrorWindow(m, true)));
 
-                        statusBar.Animation(0, ref icon);
-                        statusBar.SetText("Mutation complete (" + killCount + " mutants killed)");
+                        uiThread.Run(async() => statusBar.Animation(0, ref icon));
+                        uiThread.Run(async() => statusBar.SetText("Mutation complete (" + killCount + " mutants killed)"));
 
                         VsShellUtilities.ShowMessageBox(this.ServiceProvider,
                             "Mutation complete. " + Result.LiveMutants.Count + " mutants lived. " +
