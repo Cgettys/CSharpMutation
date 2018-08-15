@@ -65,7 +65,9 @@ namespace CSharpMutation
             testCompiler = GetLibraryCompilation(testProject);
             projectCompiler = GetLibraryCompilation(myProject);
 
-            var paths = testCompiler.References.Where(r => r is PortableExecutableReference).Select(per => ((PortableExecutableReference)per).FilePath).ToArray();
+            var paths = testCompiler.References.Where(r => r is PortableExecutableReference).Select(per => ((PortableExecutableReference)per).FilePath).ToList();
+            paths.AddRange(projectCompiler.References.Where(r => r is PortableExecutableReference).Select(per => ((PortableExecutableReference)per).FilePath));
+            paths = paths.Distinct().ToList();
             dependencies = paths.Select(File.ReadAllBytes).ToArray();
 
 
@@ -144,12 +146,12 @@ namespace CSharpMutation
                         SyntaxNode original = mutantInfo.original;
                         SyntaxNode mutant = mutantInfo.mutant;
                         var newRoot = root.ReplaceNode(original, mutant);
-                        var mutantCompiler = projectCompiler
-                                .ReplaceSyntaxTree(root.SyntaxTree, newRoot.SyntaxTree);
 
                         byte[] mutatedAssembly = null;
                         try
                         {
+                            var mutantCompiler = projectCompiler
+                                    .ReplaceSyntaxTree(root.SyntaxTree, newRoot.SyntaxTree);
                             mutatedAssembly = CompileAssembly(mutantCompiler);
                         }
                         catch (Exception e)
@@ -223,7 +225,7 @@ namespace CSharpMutation
         private static CSharpCompilation FixProject(IEnumerable<Document> documents, CSharpCompilation compiler, AssemblyMetadata interops)
         {
             compiler = compiler.AddReferences(interops.GetReference());
-            var oldToNew = documents.AsParallel().Select(FixDocument);
+            var oldToNew = documents.AsParallel().WithDegreeOfParallelism(8).Select(FixDocument);
             
             foreach (KeyValuePair<SyntaxTree, SyntaxTree> oldAndNew in oldToNew)
             {
@@ -236,7 +238,7 @@ namespace CSharpMutation
         private static CSharpCompilation InstrumentProject(CSharpCompilation compiler, AssemblyMetadata interops, Workspace workspace)
         {
             compiler = compiler.AddReferences(interops.GetReference());
-            var oldToNew = compiler.SyntaxTrees.AsParallel().Where(IsNotGeneratedCode).Select(t => InstrumentTree(t, workspace));
+            var oldToNew = compiler.SyntaxTrees.AsParallel().WithDegreeOfParallelism(8).Where(IsNotGeneratedCode).Select(t => InstrumentTree(t, workspace));
 
             foreach (KeyValuePair<SyntaxTree, SyntaxTree> oldAndNew in oldToNew)
             {

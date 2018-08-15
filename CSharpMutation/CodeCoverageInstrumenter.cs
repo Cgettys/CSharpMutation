@@ -27,12 +27,13 @@ namespace CSharpMutation
             _editor.InsertBefore(statement, new SyntaxNode[] {increment});
         }
 
-        internal ExpressionSyntax InstrumentCondition(ExpressionSyntax condition)
+        internal void InstrumentCondition(ExpressionSyntax condition)
         {
-            return SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression,
+            ExpressionSyntax newCondition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression,
                     SyntaxFactory.ParseExpression("(Interops.CoverageData.GetInstance().IncrementLineCount(" +
                                                   _coverageData.GetLineID(condition.GetLocation().ToString()) +
                                                   ")) != 0"), condition);
+            _editor.ReplaceNode(condition, newCondition);
         }
 
         #region VisitStatement
@@ -66,13 +67,7 @@ namespace CSharpMutation
         {
             base.VisitIfStatement(node);
             
-            IfStatementSyntax newNode = node;
-            SyntaxNode condition = newNode.Condition;
-
-            //Console.WriteLine(condition.GetText());
-            _editor.ReplaceNode(condition, InstrumentCondition(newNode.Condition));
-            //Console.WriteLine(_editor.GetChangedRoot().GetText());
-
+            InstrumentCondition(node.Condition);
         }
 
         public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)

@@ -24,6 +24,54 @@ namespace CSharpMutation
         }
         
         // TODO: what other one-line statements might need their curly braces added? for? while?
+        public override SyntaxNode VisitForEachStatement(ForEachStatementSyntax node)
+        {
+            ForEachStatementSyntax newNode = (ForEachStatementSyntax)base.VisitForEachStatement(node);
+            if (!(newNode.Statement is BlockSyntax))
+            {
+                BlockSyntax block = SyntaxFactory.Block(newNode.Statement);
+                newNode = node.WithStatement(block);
+            }
+
+            return newNode;
+        }
+
+        public override SyntaxNode VisitForStatement(ForStatementSyntax node)
+        {
+            ForStatementSyntax newNode = (ForStatementSyntax)base.VisitForStatement(node);
+            if (!(newNode.Statement is BlockSyntax))
+            {
+                BlockSyntax block = SyntaxFactory.Block(newNode.Statement);
+                newNode = node.WithStatement(block);
+            }
+
+            return newNode;
+        }
+
+        public override SyntaxNode VisitWhileStatement(WhileStatementSyntax node)
+        {
+            WhileStatementSyntax newNode = (WhileStatementSyntax)base.VisitWhileStatement(node);
+            if (!(newNode.Statement is BlockSyntax))
+            {
+                BlockSyntax block = SyntaxFactory.Block(newNode.Statement);
+                newNode = node.WithStatement(block);
+            }
+
+            return newNode;
+        }
+
+        public override SyntaxNode VisitDoStatement(DoStatementSyntax node)
+        {
+            DoStatementSyntax newNode = (DoStatementSyntax)base.VisitDoStatement(node);
+            if (!(newNode.Statement is BlockSyntax))
+            {
+                BlockSyntax block = SyntaxFactory.Block(newNode.Statement);
+                newNode = node.WithStatement(block);
+            }
+
+            return newNode;
+        }
+
 
         // Open classes/methods up for using in an unsigned environment.
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
