@@ -258,8 +258,11 @@ namespace CSharpMutation
             var options = myProject.CompilationOptions;
             Compilation compilation = myProject.GetCompilationAsync().Result;
             compilation = compilation.WithOptions(new CSharpCompilationOptions(
-                    options.OutputKind, options.ModuleName, options.MainTypeName,
-                    options.ScriptClassName, platform: options.Platform,
+                    options.OutputKind, 
+                    moduleName: options.ModuleName, 
+                    mainTypeName:options.MainTypeName,
+                    scriptClassName:options.ScriptClassName, 
+                    platform: options.Platform,
                     assemblyIdentityComparer: options.AssemblyIdentityComparer,
                     concurrentBuild: options.ConcurrentBuild,
                     sourceReferenceResolver: options.SourceReferenceResolver,
