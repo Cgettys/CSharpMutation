@@ -8,14 +8,11 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.ComponentModel.Design;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Windows.Forms;
 using CSharpMutation;
 using EnvDTE;
-using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -140,7 +137,7 @@ namespace CSharpMutation_VSIX
                 errorProvider.Show();
                 Project project = dialog.SelectedProject;
                 Project testProject = dialog.SelectedTestProject;
-                JoinableTaskFactory uiThread = new JoinableTaskFactory(new JoinableTaskContext());
+                JoinableTaskFactory uiThread = ThreadHelper.JoinableTaskFactory;
                 IVsStatusbar statusBar = (IVsStatusbar)ServiceProvider.GetService(typeof(SVsStatusbar));
 
                 new System.Threading.Thread(() =>
